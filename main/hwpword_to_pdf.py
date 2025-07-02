@@ -379,8 +379,9 @@ class HwpWordToPdfConverter:
                 open_opts = "versionwarning:false;securitywarning:false;updatechecking:false;passworddlg:false;repair:false"
                 
                 stop_event = threading.Event()
-                watcher = threading.Thread(target=watch_permission_dialog, args=(stop_event,))
-                watcher.daemon = True
+                watcher = threading.Thread(
+                    target=watch_permission_dialog, args=(stop_event,), daemon=True
+                )
                 watcher.start()
 
                 # HWPX 파일은 다른 형식으로 열기
@@ -389,18 +390,19 @@ class HwpWordToPdfConverter:
                 else:
                     hwp.Open(hwp_file_abs, "HWP", open_opts)
 
+                # 변환 도중에도 팝업이 뜰 수 있으므로 저장이 끝날 때까지 감시
+                hwp.SaveAs(output_path_abs, "PDF", "")
+                hwp.Clear(1)
+
+                # 감시 중지 및 최종 확인
                 stop_event.set()
                 watcher.join(timeout=0.1)
 
-                # 추가로 권한 대화상자가 남아있는지 확인
-                for _ in range(20):  # 약 6초 동안 재확인
+                for _ in range(20):  # 남아있는 팝업 추가 확인
                     if handle_permission_dialog():
                         time.sleep(0.3)
                     else:
                         break
-                    
-                hwp.SaveAs(output_path_abs, "PDF", "")
-                hwp.Clear(1)
 
                 success_count += 1
                 self.log(f"✅ {filename} 변환 완료")
