@@ -349,9 +349,16 @@ class HwpWordToPdfConverter:
                         win32gui.SendMessage(hwnd, win32con.WM_KEYDOWN, ord('N'), 0)
                         win32gui.SendMessage(hwnd, win32con.WM_KEYUP, ord('N'), 0)
                         return True
-            except:
+            except Exception:
                 pass
             return False
+
+        def watch_permission_dialog(stop_event):
+            """권한 팝업이 나타날 때까지 대기 후 N 키를 눌러 닫음"""
+            while not stop_event.is_set():
+                if handle_permission_dialog():
+                    break
+                time.sleep(0.3)
 
         for i, hwp_file in enumerate(hwp_files, 1):
             if self.stop_requested:
@@ -371,16 +378,24 @@ class HwpWordToPdfConverter:
                 output_path_abs = os.path.abspath(output_path)
                 open_opts = "versionwarning:false;securitywarning:false;updatechecking:false;passworddlg:false;repair:false"
                 
+                stop_event = threading.Event()
+                watcher = threading.Thread(target=watch_permission_dialog, args=(stop_event,))
+                watcher.daemon = True
+                watcher.start()
+
                 # HWPX 파일은 다른 형식으로 열기
                 if file_ext == '.hwpx':
                     hwp.Open(hwp_file_abs, "HWPX", open_opts)
                 else:
                     hwp.Open(hwp_file_abs, "HWP", open_opts)
-                
-                # 권한 대화상자 처리 시도
-                for _ in range(3):  # 최대 3번 시도
+
+                stop_event.set()
+                watcher.join(timeout=0.1)
+
+                # 추가로 권한 대화상자가 남아있는지 확인
+                for _ in range(20):  # 약 6초 동안 재확인
                     if handle_permission_dialog():
-                        time.sleep(0.5)
+                        time.sleep(0.3)
                     else:
                         break
                     
